@@ -966,21 +966,15 @@
                 return;
             }
 
-            // Chiamata all'API di Grok (xAI)
-            const apiUrl = 'https://api.x.ai/v1/chat/completions';
+            // Chiamata all'API di Grok (xAI) aggiornata secondo il tuo curl
+            const apiUrl = 'https://api.x.ai/v1/responses';
             
+            // Uniamo il prompt di sistema (per avere risposte da consulente in italiano) all'input utente
+            const fullPrompt = "Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano.\n\nDomanda utente: " + userPrompt;
+
             const payload = {
-                model: "grok-beta", // Usa il modello standard disponibile
-                messages: [
-                    { 
-                        role: "system", 
-                        content: "Sei un esperto consulente di carriera e reclutatore. L'utente sta analizzando offerte di lavoro IT/Tech o generaliste. Spiega terminologie, acronimi, tool (es. SaaS, B2B, Kubernetes, ERP) in modo conciso, rassicurante e in Italiano." 
-                    },
-                    { 
-                        role: "user", 
-                        content: userPrompt 
-                    }
-                ]
+                model: "grok-4.20-reasoning", 
+                input: fullPrompt
             };
 
             try {
@@ -996,18 +990,30 @@
                 const result = await response.json();
                 document.getElementById(loaderId).remove();
 
-                if (result.choices && result.choices[0].message) {
-                    const aiResponseText = result.choices[0].message.content;
-                    state.aiHistory.push({ role: 'ai', text: aiResponseText });
-                    appendChatMessage('ai', aiResponseText);
+                // Estrazione flessibile del testo di risposta in base alla struttura del nuovo endpoint
+                let aiResponseText = "";
+                
+                if (result.output) {
+                    aiResponseText = result.output;
+                } else if (result.text) {
+                    aiResponseText = result.text;
+                } else if (result.response) {
+                    aiResponseText = result.response;
+                } else if (result.choices && result.choices[0].message) {
+                    aiResponseText = result.choices[0].message.content; // Fallback vecchio formato
                 } else {
-                    console.error("Grok Response:", result);
-                    throw new Error(result.error?.message || "Risposta API non valida");
+                    // Se non trova le chiavi sopra, stampa l'intero JSON per farci capire com'è fatto
+                    aiResponseText = "Struttura risposta non standard: " + JSON.stringify(result);
                 }
+
+                // Aggiunge la risposta in chat
+                state.aiHistory.push({ role: 'ai', text: aiResponseText });
+                appendChatMessage('ai', aiResponseText);
+                
             } catch (e) {
                 console.error("AI Error:", e);
                 document.getElementById(loaderId)?.remove();
-                appendChatMessage('ai', `❌ Errore API: ${e.message}. Verifica la tua API Key.`);
+                appendChatMessage('ai', `❌ Errore di connessione: ${e.message}. Verifica la chiave API o controlla la console (F12) per i dettagli.`);
             }
         }
 
