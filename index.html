@@ -664,14 +664,14 @@
 
         // NEW: Gestione Impostazioni
         app.showSettingsModal = () => {
-            const savedKey = localStorage.getItem('grokApiKey') || '';
-            document.getElementById('grok-api-key').value = savedKey;
+            const savedKey = localStorage.getItem('hfApiKey') || '';
+            document.getElementById('api-key-input').value = savedKey;
             showModal('settings-modal');
         };
 
         app.saveSettings = () => {
-            const key = document.getElementById('grok-api-key').value.trim();
-            localStorage.setItem('grokApiKey', key);
+            const key = document.getElementById('api-key-input').value.trim();
+            localStorage.setItem('hfApiKey', key);
             showToast("Impostazioni salvate", "success");
             app.closeModals();
         };
@@ -928,20 +928,28 @@
             
             input.value = '';
             askAI(val);
-        };
+        <!-- NEW: Settings Modal -->
+        <div id="settings-modal" class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col hidden overflow-hidden">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="font-bold text-lg"><i class="fas fa-cog text-gray-500 mr-2"></i> Impostazioni</h3>
+                <button onclick="app.closeModals()" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-4 space-y-4">
+                <div class="bg-blue-50 text-blue-800 p-3 rounded-lg text-sm mb-4">
+                    <i class="fas fa-info-circle"></i> La chiave API viene salvata solo nella memoria locale del tuo browser per motivi di sicurezza.
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Hugging Face Access Token (Inizia con hf_)</label>
+                    <input type="password" id="api-key-input" placeholder="hf_..." class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                </div>
+            </div>
+            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
+                <button onclick="app.closeModals()" class="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition">Chiudi</button>
+                <button onclick="app.saveSettings()" class="px-4 py-2 bg-primary text-white font-medium hover:bg-primaryHover rounded-lg transition">Salva Chiave</button>
+            </div>
+        </div>
 
-        async function askAI(userPrompt) {
-            const historyContainer = document.getElementById('ai-chat-history');
-            
-            // Rimuovi eventuale testo di placeholder
-            if (state.aiHistory.length === 0) {
-                historyContainer.innerHTML = '';
-            }
-
-            // Aggiungi messaggio utente alla UI e allo stato
-            state.aiHistory.push({ role: 'user', text: userPrompt });
-            appendChatMessage('user', userPrompt);
-
+    </div>
             // Mostra loader AI
             const loaderId = 'ai-loader-' + Date.now();
             const loaderHtml = `
@@ -958,20 +966,17 @@
             historyContainer.scrollTop = historyContainer.scrollHeight;
 
             // Recupera la chiave API salvata
-            const grokApiKey = localStorage.getItem('grokApiKey');
+            const apiKey = localStorage.getItem('hfApiKey');
             
-            if (!grokApiKey) {
+            if (!apiKey) {
                 document.getElementById(loaderId).remove();
                 appendChatMessage('ai', "❌ Manca la chiave API. Inseriscila nelle Impostazioni nel menu laterale.");
                 return;
             }
 
             // --- NUOVO FLUSSO PER API HUGGINGFACE INFERENCE (GRATUITO) ---
-            // Usiamo l'API di inferenza gratuita di Hugging Face come alternativa stabile.
-            // Richiede un account Hugging Face (gratuito) e un Token di accesso.
             const apiUrl = 'https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1';
             
-            // Creiamo un prompt formattato per i modelli Instruct
             const fullPrompt = `<s>[INST] Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano. 
             Rispondi SOLO alla domanda, non aggiungere testo extra.
             
@@ -991,7 +996,7 @@
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${grokApiKey}`
+                        'Authorization': `Bearer ${apiKey}`
                     },
                     body: JSON.stringify(payload)
                 });
