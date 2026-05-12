@@ -72,7 +72,7 @@
                     <i class="fas fa-plus"></i> Nuova Offerta
                 </button>
 
-                <!-- NEW: Settings Button -->
+                <!-- Settings Button -->
                 <button onclick="app.showSettingsModal()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg shadow-sm transition mb-6 flex items-center justify-center gap-2">
                     <i class="fas fa-cog"></i> Impostazioni API
                 </button>
@@ -118,7 +118,7 @@
                 <!-- Verrà popolato dinamicamente -->
             </div>
             
-            <!-- Floating AI Button (Visible only when text is selected) -->
+            <!-- Floating AI Button -->
             <div id="ai-tooltip" class="hidden">
                 <button onclick="app.triggerAIFromSelection()" class="bg-gray-900 text-white shadow-lg rounded-full px-4 py-2 text-sm font-medium flex items-center gap-2 hover:bg-gray-800 transition transform hover:scale-105">
                     <i class="fas fa-sparkles text-yellow-400"></i> Chiedi all'AI
@@ -248,7 +248,7 @@
             </div>
         </div>
 
-        <!-- NEW: Settings Modal -->
+        <!-- Settings Modal (Aggiornato per HF) -->
         <div id="settings-modal" class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col hidden overflow-hidden">
             <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
                 <h3 class="font-bold text-lg"><i class="fas fa-cog text-gray-500 mr-2"></i> Impostazioni</h3>
@@ -259,7 +259,7 @@
                     <i class="fas fa-info-circle"></i> La chiave API viene salvata solo nella memoria locale del tuo browser per motivi di sicurezza.
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Hugging Face API Key</label>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Hugging Face Token</label>
                     <input type="password" id="hf-api-key" placeholder="hf_..." class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
                 </div>
             </div>
@@ -275,7 +275,7 @@
     <div id="toast-container" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
     <script>
-        // Failsafe per nascondere il loader nel caso estremo in cui ci siano errori di sintassi javascript (es. virgole mancanti)
+        // Failsafe per nascondere il loader
         window.addEventListener('load', () => {
             setTimeout(() => {
                 const loader = document.getElementById('app-loader');
@@ -295,9 +295,7 @@
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
-        // ==========================================
-        // ⚠️ FIREBASE CONFIG CORRETTO ⚠️
-        // ==========================================
+        // Firebase Config
         const myFirebaseConfig = {
             apiKey: "AIzaSyCt2u9MVB7C7B9APcr_8D5YTkwUNh4Q-BQ",
             authDomain: "job-archive-tool.firebaseapp.com",
@@ -308,7 +306,6 @@
         };
         
         const appId = 'job-archive-app'; 
-        // Usa il config locale se definito, altrimenti tenta fallback per retrocompatibilità
         const firebaseConfig = Object.keys(myFirebaseConfig).length > 0 ? myFirebaseConfig : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { projectId: "dummy-project" });
         
         let appFirebase, db, auth;
@@ -327,25 +324,21 @@
             useLocalStorage = true;
         }
 
-        // Stato dell'applicazione
         const state = {
             userId: null,
             folders: [],
             jobs: [],
-            currentFolderId: null, // null = all jobs
-            viewingJob: null, // job object if viewing details
+            currentFolderId: null,
+            viewingJob: null,
             aiHistory: []
         };
 
-        // Riferimento globale per funzioni chiamate dall'HTML
         window.app = {};
 
-        // Inizializzazione Auth
         async function initAuth() {
             try {
                 if (useLocalStorage) throw new Error("Firebase non configurato, attivazione storage locale.");
                 
-                // Modificato per l'uso standard fuori da questo ambiente
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     const userCredential = await signInWithCustomToken(auth, __initial_auth_token);
                     state.userId = userCredential.user.uid;
@@ -374,7 +367,6 @@
             state.jobs.sort((a, b) => new Date(b.date) - new Date(a.date));
             updateUI();
             
-            // Modifica icona nel footer per indicare il salvataggio locale
             const statusIcon = document.querySelector('.fa-cloud-check');
             if (statusIcon) {
                 statusIcon.className = 'fas fa-hdd text-gray-400';
@@ -390,17 +382,14 @@
             updateUI();
         }
 
-        // Funzioni helper per i path di Firestore (Regola 1)
         const getFoldersRef = () => collection(db, 'artifacts', appId, 'users', state.userId, 'folders');
         const getJobsRef = () => collection(db, 'artifacts', appId, 'users', state.userId, 'jobs');
         const getFolderDoc = (id) => doc(db, 'artifacts', appId, 'users', state.userId, 'folders', id);
         const getJobDoc = (id) => doc(db, 'artifacts', appId, 'users', state.userId, 'jobs', id);
 
-        // Listeners in tempo reale
         function startRealtimeListeners() {
             if (!state.userId) return;
 
-            // Listen Folders
             onSnapshot(getFoldersRef(), (snapshot) => {
                 state.folders = [];
                 snapshot.forEach(doc => state.folders.push({ id: doc.id, ...doc.data() }));
@@ -408,11 +397,9 @@
                 updateUI();
             }, (error) => console.error("Error fetching folders:", error));
 
-            // Listen Jobs
             onSnapshot(getJobsRef(), (snapshot) => {
                 state.jobs = [];
                 snapshot.forEach(doc => state.jobs.push({ id: doc.id, ...doc.data() }));
-                // Sort by date desc
                 state.jobs.sort((a, b) => new Date(b.date) - new Date(a.date));
                 updateUI();
             }, (error) => console.error("Error fetching jobs:", error));
@@ -429,10 +416,8 @@
             const list = document.getElementById('folders-list');
             list.innerHTML = '';
             
-            // Aggiorna contatore "Tutte"
             document.getElementById('count-all').textContent = state.jobs.length;
             
-            // Stile bottone "Tutte"
             const btnAll = document.getElementById('nav-all');
             if (state.currentFolderId === null && !state.viewingJob) {
                 btnAll.className = "w-full text-left px-3 py-2 rounded-md font-medium bg-blue-50 text-primary transition flex items-center justify-between";
@@ -630,7 +615,6 @@
         app.showAddJobModal = () => {
             document.getElementById('job-form').reset();
             document.getElementById('job-id').value = '';
-            // Data di default oggi
             document.getElementById('job-date').value = new Date().toISOString().split('T')[0];
             if (state.currentFolderId) {
                 document.getElementById('job-folder').value = state.currentFolderId;
@@ -662,7 +646,7 @@
             showModal('folder-modal');
         };
 
-        // NEW: Gestione Impostazioni
+        // Gestione Impostazioni (Aggiornata per HF)
         app.showSettingsModal = () => {
             const savedKey = localStorage.getItem('hfApiKey') || '';
             document.getElementById('hf-api-key').value = savedKey;
@@ -702,7 +686,6 @@
                         saveToLocalStorage();
                     } else {
                         await deleteDoc(getFolderDoc(deleteContext.id));
-                        // Opzionale: spostare i job della cartella in "nessuna cartella"
                         const jobsInFolder = state.jobs.filter(j => j.folderId === deleteContext.id);
                         for (let j of jobsInFolder) {
                             await setDoc(getJobDoc(j.id), { ...j, folderId: null }, { merge: true });
@@ -761,7 +744,6 @@
                 showToast("Offerta salvata con successo", "success");
                 app.closeModals();
                 
-                // Aggiorna vista se eravamo nel dettaglio
                 if (state.viewingJob && state.viewingJob.id === id) {
                     state.viewingJob = { id, ...jobData };
                     updateUI();
@@ -796,7 +778,6 @@
             }
         };
 
-        // Modal Helpers
         function showModal(id) {
             const backdrop = document.getElementById('modal-backdrop');
             const modal = document.getElementById(id);
@@ -816,7 +797,6 @@
             document.getElementById('modal-backdrop').classList.add('hidden');
         };
 
-        // Helpers
         function escapeHTML(str) {
             if (!str) return '';
             return str.replace(/[&<>'"]/g, 
@@ -850,33 +830,27 @@
             
             container.appendChild(toast);
             
-            // In animate
             requestAnimationFrame(() => {
                 toast.classList.remove('translate-y-10', 'opacity-0');
             });
             
-            // Out animate and remove
             setTimeout(() => {
                 toast.classList.add('opacity-0', 'translate-y-2');
                 setTimeout(() => toast.remove(), 300);
             }, 3000);
         }
 
-
         const aiTooltip = document.getElementById('ai-tooltip');
         let currentSelectionText = "";
 
-        // Gestione della selezione testo per tooltip AI
         document.addEventListener('mouseup', (e) => {
             if (!state.viewingJob) return;
             
-            // Ignora click nel tooltip o sidebar
             if (e.target.closest('#ai-tooltip') || e.target.closest('#ai-sidebar')) return;
 
             const selection = window.getSelection();
             const text = selection.toString().trim();
 
-            // Verifica che il testo selezionato provenga dal container della descrizione
             const container = document.getElementById('job-description-text');
             if (!container) return;
 
@@ -885,7 +859,6 @@
                 const range = selection.getRangeAt(0);
                 const rect = range.getBoundingClientRect();
                 
-                // Posiziona il tooltip sopra la selezione
                 aiTooltip.style.left = `${rect.left + (rect.width / 2)}px`;
                 aiTooltip.style.top = `${rect.top - 45}px`;
                 aiTooltip.classList.remove('hidden');
@@ -895,12 +868,10 @@
             }
         });
 
-        // Nascondi tooltip allo scroll
         document.getElementById('main-content').addEventListener('scroll', () => {
             aiTooltip.classList.add('hidden');
         });
 
-        // AI Sidebar Logic
         app.toggleAiSidebar = (forceShow = false) => {
             const sidebar = document.getElementById('ai-sidebar');
             if (forceShow || sidebar.classList.contains('translate-x-full')) {
@@ -930,19 +901,17 @@
             askAI(val);
         };
 
+        // --- HUGGING FACE API LOGIC ---
         async function askAI(userPrompt) {
             const historyContainer = document.getElementById('ai-chat-history');
             
-            // Rimuovi eventuale testo di placeholder
             if (state.aiHistory.length === 0) {
                 historyContainer.innerHTML = '';
             }
 
-            // Aggiungi messaggio utente alla UI e allo stato
             state.aiHistory.push({ role: 'user', text: userPrompt });
             appendChatMessage('user', userPrompt);
 
-            // Mostra loader AI
             const loaderId = 'ai-loader-' + Date.now();
             const loaderHtml = `
                 <div id="${loaderId}" class="flex gap-3 text-sm animate-pulse">
@@ -957,27 +926,28 @@
             historyContainer.insertAdjacentHTML('beforeend', loaderHtml);
             historyContainer.scrollTop = historyContainer.scrollHeight;
 
-            // Recupera la chiave API salvata
             const hfApiKey = localStorage.getItem('hfApiKey');
             
             if (!hfApiKey) {
                 document.getElementById(loaderId).remove();
-                appendChatMessage('ai', "❌ Manca la chiave API di Hugging Face. Inseriscila nelle Impostazioni nel menu laterale.");
+                appendChatMessage('ai', "❌ Manca il token di Hugging Face. Inseriscilo nelle Impostazioni nel menu laterale.");
                 return;
             }
 
-            // Chiamata all'API di Hugging Face
-            const apiUrl = 'https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1';
+            // Utilizziamo un modello ottimizzato per istruzioni e chat su Hugging Face
+            const model = "mistralai/Mistral-7B-Instruct-v0.3"; 
+            const apiUrl = `https://api-inference.huggingface.co/models/${model}`;
             
-            // Prompt formattato per Mixtral
-            const fullPrompt = `<s>[INST] Sei un esperto consulente di carriera IT. Spiega questo termine/concetto in modo conciso e in Italiano: ${userPrompt} [/INST]`;
+            // Formattazione specifica per modelli Instruct (es. Mistral/Llama)
+            const systemPrompt = "Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano.";
+            const fullPrompt = `<s>[INST] ${systemPrompt}\n\nDomanda utente: ${userPrompt} [/INST]`;
 
             const payload = {
                 inputs: fullPrompt,
                 parameters: {
-                    max_new_tokens: 250,
+                    max_new_tokens: 500,
                     temperature: 0.7,
-                    return_full_text: false
+                    return_full_text: false // Importante per non farsi restituire anche il prompt inviato
                 }
             };
 
@@ -996,34 +966,29 @@
 
                 let aiResponseText = "";
                 
-                // Gestione errori HF (es. modello in caricamento)
-                if (result.error) {
-                    if (result.error.includes("is currently loading")) {
-                        aiResponseText = "⏳ Il modello si sta svegliando (Hugging Face impiega ~15 secondi al primo avvio). Per favore, riprova tra poco!";
-                    } else {
-                        aiResponseText = "❌ Errore API: " + result.error;
-                    }
-                } else if (Array.isArray(result) && result[0].generated_text) {
-                    aiResponseText = result[0].generated_text.trim();
+                // Gestione flessibile della risposta tipica di Hugging Face Serverless Inference
+                if (Array.isArray(result) && result[0].generated_text) {
+                    aiResponseText = result[0].generated_text;
+                } else if (result.error) {
+                    aiResponseText = `Errore API HF: ${result.error}`;
                 } else {
+                    // Fallback se la struttura è inaspettata
                     aiResponseText = "Struttura risposta non standard: " + JSON.stringify(result);
                 }
 
-                // Aggiunge la risposta in chat
-                state.aiHistory.push({ role: 'ai', text: aiResponseText });
-                appendChatMessage('ai', aiResponseText);
+                state.aiHistory.push({ role: 'ai', text: aiResponseText.trim() });
+                appendChatMessage('ai', aiResponseText.trim());
                 
             } catch (e) {
                 console.error("AI Error:", e);
                 document.getElementById(loaderId)?.remove();
-                appendChatMessage('ai', `❌ Errore di connessione: ${e.message}. Verifica la chiave API o la connessione.`);
+                appendChatMessage('ai', `❌ Errore di connessione: ${e.message}. Verifica il Token API o la disponibilità del modello.`);
             }
         }
 
         function appendChatMessage(role, text) {
             const container = document.getElementById('ai-chat-history');
             
-            // Format bold text for markdown-like syntax
             const formattedText = escapeHTML(text).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
             
             let html = '';
@@ -1051,7 +1016,6 @@
             container.scrollTop = container.scrollHeight;
         }
 
-        // FIX: Assicura che l'app parta sempre, togliendo il blocco sul loader
         if (document.readyState === 'loading') {
             document.addEventListener('DOMContentLoaded', initAuth);
         } else {
