@@ -1,0 +1,981 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Job Archive & AI Assistant</title>
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="description" content="Tool personale per l'archiviazione e l'analisi di job listing con integrazione AI.">
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    fontFamily: { sans: ['Inter', 'sans-serif'] },
+                    colors: {
+                        primary: '#2563eb',
+                        primaryHover: '#1d4ed8',
+                        surface: '#ffffff',
+                        background: '#f3f4f6'
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body { font-family: 'Inter', sans-serif; background-color: #f3f4f6; color: #1f2937; margin: 0; padding: 0; height: 100vh; overflow: hidden; }
+        .scrollbar-hide::-webkit-scrollbar { display: none; }
+        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        
+        /* Tooltip per AI */
+        #ai-tooltip {
+            position: absolute;
+            transform: translateX(-50%);
+            z-index: 50;
+            transition: opacity 0.2s ease-in-out;
+        }
+        
+        /* Animazioni modali */
+        .modal-enter { opacity: 0; transform: scale(0.95); }
+        .modal-enter-active { opacity: 1; transform: scale(1); transition: opacity 0.2s, transform 0.2s; }
+    </style>
+</head>
+<body class="flex flex-col h-screen overflow-hidden text-gray-800">
+
+    <div id="app-loader" class="fixed inset-0 bg-white z-50 flex items-center justify-center">
+        <div class="text-center">
+            <i class="fas fa-circle-notch fa-spin text-4xl text-primary mb-4"></i>
+            <p class="text-gray-500 font-medium">Inizializzazione ambiente sicuro...</p>
+        </div>
+    </div>
+
+    <!-- Layout Principale -->
+    <div class="flex h-full w-full relative">
+        
+        <!-- Sidebar -->
+        <aside class="w-64 bg-white border-r border-gray-200 flex flex-col hidden md:flex z-10 flex-shrink-0">
+            <div class="p-4 border-b border-gray-200 flex items-center justify-between">
+                <h1 class="font-bold text-lg text-gray-800 flex items-center gap-2">
+                    <i class="fas fa-briefcase text-primary"></i> Job Archive
+                </h1>
+            </div>
+            
+            <div class="p-4 flex-1 overflow-y-auto scrollbar-hide">
+                <button onclick="app.showAddJobModal()" class="w-full bg-primary hover:bg-primaryHover text-white font-medium py-2 px-4 rounded-lg shadow-sm transition mb-6 flex items-center justify-center gap-2">
+                    <i class="fas fa-plus"></i> Nuova Offerta
+                </button>
+
+                <!-- NEW: Settings Button -->
+                <button onclick="app.showSettingsModal()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg shadow-sm transition mb-6 flex items-center justify-center gap-2">
+                    <i class="fas fa-cog"></i> Impostazioni API
+                </button>
+
+                <div class="space-y-1">
+                    <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">Viste</div>
+                    <button onclick="app.setFolder(null)" id="nav-all" class="w-full text-left px-3 py-2 rounded-md font-medium bg-blue-50 text-primary transition flex items-center justify-between">
+                        <span class="flex items-center gap-2"><i class="fas fa-layer-group w-4 text-center"></i> Tutte le offerte</span>
+                        <span id="count-all" class="text-xs bg-blue-100 text-blue-700 py-0.5 px-2 rounded-full">0</span>
+                    </button>
+                </div>
+
+                <div class="mt-8 space-y-1">
+                    <div class="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2 flex items-center justify-between">
+                        <span>Cartelle</span>
+                        <button onclick="app.showAddFolderModal()" class="text-gray-400 hover:text-primary transition" title="Nuova cartella"><i class="fas fa-folder-plus"></i></button>
+                    </div>
+                    <div id="folders-list" class="space-y-1">
+                        <!-- Popolato dinamicamente -->
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-4 border-t border-gray-200 text-xs text-gray-400 flex justify-between items-center">
+                <span>Dati salvati in Cloud</span>
+                <i class="fas fa-cloud-check text-green-500"></i>
+            </div>
+        </aside>
+
+        <!-- Main Content -->
+        <main class="flex-1 bg-background flex flex-col h-full relative overflow-hidden">
+            <!-- Mobile Header -->
+            <header class="md:hidden bg-white border-b border-gray-200 p-4 flex justify-between items-center">
+                <h1 class="font-bold text-lg text-gray-800"><i class="fas fa-briefcase text-primary"></i> Job Archive</h1>
+                <div class="flex gap-4">
+                    <button onclick="app.showSettingsModal()" class="text-gray-500"><i class="fas fa-cog text-xl"></i></button>
+                    <button onclick="app.showAddJobModal()" class="text-primary"><i class="fas fa-plus text-xl"></i></button>
+                </div>
+            </header>
+
+            <!-- Dynamic Content Area -->
+            <div id="main-content" class="flex-1 overflow-y-auto p-4 md:p-8 scrollbar-hide">
+                <!-- Verrà popolato dinamicamente -->
+            </div>
+            
+            <!-- Floating AI Button (Visible only when text is selected) -->
+            <div id="ai-tooltip" class="hidden">
+                <button onclick="app.triggerAIFromSelection()" class="bg-gray-900 text-white shadow-lg rounded-full px-4 py-2 text-sm font-medium flex items-center gap-2 hover:bg-gray-800 transition transform hover:scale-105">
+                    <i class="fas fa-sparkles text-yellow-400"></i> Chiedi all'AI
+                </button>
+            </div>
+        </main>
+
+        <!-- AI Sidebar (Slide over) -->
+        <div id="ai-sidebar" class="fixed inset-y-0 right-0 w-full md:w-96 bg-white shadow-2xl transform translate-x-full transition-transform duration-300 ease-in-out z-40 flex flex-col border-l border-gray-200">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h2 class="font-semibold text-gray-800 flex items-center gap-2">
+                    <i class="fas fa-robot text-primary"></i> Assistente AI
+                </h2>
+                <button onclick="app.toggleAiSidebar()" class="text-gray-500 hover:text-gray-800 transition"><i class="fas fa-times"></i></button>
+            </div>
+            <div id="ai-chat-history" class="flex-1 overflow-y-auto p-4 space-y-4 bg-white">
+                <div class="text-center text-sm text-gray-500 mt-4">
+                    Seleziona del testo in un'offerta di lavoro per chiedere chiarimenti.
+                </div>
+            </div>
+            <div class="p-4 border-t border-gray-200 bg-gray-50">
+                <form id="ai-form" class="flex gap-2" onsubmit="app.submitAIOther(event)">
+                    <input type="text" id="ai-input" placeholder="Chiedi qualcosa..." class="flex-1 border border-gray-300 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                    <button type="submit" class="bg-primary hover:bg-primaryHover text-white px-3 py-2 rounded-lg transition">
+                        <i class="fas fa-paper-plane"></i>
+                    </button>
+                </form>
+            </div>
+        </div>
+
+    </div>
+
+    
+    <!-- Modal Sfondo -->
+    <div id="modal-backdrop" class="fixed inset-0 bg-gray-900 bg-opacity-50 z-50 hidden flex items-center justify-center p-4">
+        
+        <!-- Job Form Modal -->
+        <div id="job-modal" class="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col hidden overflow-hidden">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 id="job-modal-title" class="font-bold text-lg">Aggiungi Offerta</h3>
+                <button onclick="app.closeModals()" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-4 flex-1 overflow-y-auto">
+                <form id="job-form" class="space-y-4">
+                    <input type="hidden" id="job-id">
+                    
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Azienda *</label>
+                            <input type="text" id="job-company" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Titolo del Ruolo *</label>
+                            <input type="text" id="job-title" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        </div>
+                    </div>
+
+                    <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Località</label>
+                            <input type="text" id="job-location" placeholder="Es. Milano, Ibrido, Remoto" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Data *</label>
+                            <input type="date" id="job-date" required class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-700 mb-1">Cartella</label>
+                            <select id="job-folder" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none bg-white">
+                                <option value="">Nessuna cartella</option>
+                                <!-- Populate dynamically -->
+                            </select>
+                        </div>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Link Fonte (URL)</label>
+                        <input type="url" id="job-link" placeholder="https://..." class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Descrizione Completa</label>
+                        <textarea id="job-description" rows="5" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-y" placeholder="Copia e incolla qui la job description..."></textarea>
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-gray-700 mb-1">Note Personali</label>
+                        <textarea id="job-notes" rows="2" class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none resize-y" placeholder="Impressioni, contatti HR, stipendio atteso..."></textarea>
+                    </div>
+                </form>
+            </div>
+            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
+                <button onclick="app.closeModals()" class="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition">Annulla</button>
+                <button onclick="app.saveJob()" class="px-4 py-2 bg-primary text-white font-medium hover:bg-primaryHover rounded-lg transition">Salva Offerta</button>
+            </div>
+        </div>
+
+        <!-- Folder Modal -->
+        <div id="folder-modal" class="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col hidden overflow-hidden">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="font-bold text-lg">Nuova Cartella</h3>
+                <button onclick="app.closeModals()" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-4">
+                <input type="text" id="folder-name" placeholder="Es. Da Valutare, Rifiutate..." class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+            </div>
+            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
+                <button onclick="app.closeModals()" class="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition">Annulla</button>
+                <button onclick="app.saveFolder()" class="px-4 py-2 bg-primary text-white font-medium hover:bg-primaryHover rounded-lg transition">Crea</button>
+            </div>
+        </div>
+
+        <!-- Confirm Delete Modal -->
+        <div id="confirm-modal" class="bg-white rounded-xl shadow-2xl w-full max-w-sm flex flex-col hidden overflow-hidden">
+            <div class="p-4 flex gap-4 items-start">
+                <div class="bg-red-100 text-red-600 p-2 rounded-full h-10 w-10 flex items-center justify-center flex-shrink-0">
+                    <i class="fas fa-exclamation-triangle"></i>
+                </div>
+                <div>
+                    <h3 class="font-bold text-lg text-gray-900">Conferma Eliminazione</h3>
+                    <p class="text-sm text-gray-500 mt-1">Sei sicuro di voler eliminare questo elemento? L'azione non può essere annullata.</p>
+                </div>
+            </div>
+            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2 mt-2">
+                <button onclick="app.closeModals()" class="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition">Annulla</button>
+                <button id="confirm-delete-btn" class="px-4 py-2 bg-red-600 text-white font-medium hover:bg-red-700 rounded-lg transition">Elimina</button>
+            </div>
+        </div>
+
+        <!-- NEW: Settings Modal -->
+        <div id="settings-modal" class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col hidden overflow-hidden">
+            <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
+                <h3 class="font-bold text-lg"><i class="fas fa-cog text-gray-500 mr-2"></i> Impostazioni</h3>
+                <button onclick="app.closeModals()" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="p-4 space-y-4">
+                <div class="bg-blue-50 text-blue-800 p-3 rounded-lg text-sm mb-4">
+                    <i class="fas fa-info-circle"></i> La chiave API viene salvata solo nella memoria locale del tuo browser per motivi di sicurezza.
+                </div>
+                <div>
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Grok API Key (xAI)</label>
+                    <input type="password" id="grok-api-key" placeholder="xai-..." class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                </div>
+            </div>
+            <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
+                <button onclick="app.closeModals()" class="px-4 py-2 text-gray-600 font-medium hover:bg-gray-100 rounded-lg transition">Chiudi</button>
+                <button onclick="app.saveSettings()" class="px-4 py-2 bg-primary text-white font-medium hover:bg-primaryHover rounded-lg transition">Salva Chiave</button>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast-container" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ==========================================
+        // ⚠️ INCOLLA QUI IL TUO FIREBASE CONFIG ⚠️
+        // Sostituisci l'oggetto vuoto con quello che ti fornisce Firebase Console
+        // ==========================================
+        const myFirebaseConfig = {
+            // Import the functions you need from the SDKs you need
+import { initializeApp } from "firebase/app";
+// TODO: Add SDKs for Firebase products that you want to use
+// https://firebase.google.com/docs/web/setup#available-libraries
+
+// Your web app's Firebase configuration
+const firebaseConfig = {
+  apiKey: "AIzaSyCt2u9MVB7C7B9APcr_8D5YTkwUNh4Q-BQ",
+  authDomain: "job-archive-tool.firebaseapp.com",
+  projectId: "job-archive-tool",
+  storageBucket: "job-archive-tool.firebasestorage.app",
+  messagingSenderId: "1068648505648",
+  appId: "1:1068648505648:web:4779be9db9185949bb28f5"
+};
+
+// Initialize Firebase
+const app = initializeApp(firebaseConfig);
+        };
+        
+        const appId = 'job-archive-app'; 
+        // Usa il config locale se definito, altrimenti tenta fallback per retrocompatibilità
+        const firebaseConfig = Object.keys(myFirebaseConfig).length > 0 ? myFirebaseConfig : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { projectId: "dummy-project" });
+        
+        let appFirebase, db, auth;
+        try {
+            appFirebase = initializeApp(firebaseConfig);
+            db = getFirestore(appFirebase);
+            auth = getAuth(appFirebase);
+        } catch (e) {
+            console.error("Firebase init error", e);
+        }
+
+        // Stato dell'applicazione
+        const state = {
+            userId: null,
+            folders: [],
+            jobs: [],
+            currentFolderId: null, // null = all jobs
+            viewingJob: null, // job object if viewing details
+            aiHistory: []
+        };
+
+        // Riferimento globale per funzioni chiamate dall'HTML
+        window.app = {};
+
+        // Inizializzazione Auth
+        async function initAuth() {
+            try {
+                // Modificato per l'uso standard fuori da questo ambiente
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    const userCredential = await signInWithCustomToken(auth, __initial_auth_token);
+                    state.userId = userCredential.user.uid;
+                } else {
+                    const userCredential = await signInAnonymously(auth);
+                    state.userId = userCredential.user.uid;
+                }
+                document.getElementById('app-loader').style.display = 'none';
+                startRealtimeListeners();
+            } catch (error) {
+                console.error("Auth Error:", error);
+                document.getElementById('app-loader').style.display = 'none';
+                showToast("Errore db: Inserisci il Firebase Config!", "error");
+            }
+        }
+
+        // Funzioni helper per i path di Firestore (Regola 1)
+        const getFoldersRef = () => collection(db, 'artifacts', appId, 'users', state.userId, 'folders');
+        const getJobsRef = () => collection(db, 'artifacts', appId, 'users', state.userId, 'jobs');
+        const getFolderDoc = (id) => doc(db, 'artifacts', appId, 'users', state.userId, 'folders', id);
+        const getJobDoc = (id) => doc(db, 'artifacts', appId, 'users', state.userId, 'jobs', id);
+
+        // Listeners in tempo reale
+        function startRealtimeListeners() {
+            if (!state.userId) return;
+
+            // Listen Folders
+            onSnapshot(getFoldersRef(), (snapshot) => {
+                state.folders = [];
+                snapshot.forEach(doc => state.folders.push({ id: doc.id, ...doc.data() }));
+                state.folders.sort((a, b) => a.name.localeCompare(b.name));
+                updateUI();
+            }, (error) => console.error("Error fetching folders:", error));
+
+            // Listen Jobs
+            onSnapshot(getJobsRef(), (snapshot) => {
+                state.jobs = [];
+                snapshot.forEach(doc => state.jobs.push({ id: doc.id, ...doc.data() }));
+                // Sort by date desc
+                state.jobs.sort((a, b) => new Date(b.date) - new Date(a.date));
+                updateUI();
+            }, (error) => console.error("Error fetching jobs:", error));
+        }
+
+        
+        function updateUI() {
+            renderSidebar();
+            renderMainContent();
+            populateFolderSelects();
+        }
+
+        function renderSidebar() {
+            const list = document.getElementById('folders-list');
+            list.innerHTML = '';
+            
+            // Aggiorna contatore "Tutte"
+            document.getElementById('count-all').textContent = state.jobs.length;
+            
+            // Stile bottone "Tutte"
+            const btnAll = document.getElementById('nav-all');
+            if (state.currentFolderId === null && !state.viewingJob) {
+                btnAll.className = "w-full text-left px-3 py-2 rounded-md font-medium bg-blue-50 text-primary transition flex items-center justify-between";
+            } else {
+                btnAll.className = "w-full text-left px-3 py-2 rounded-md font-medium text-gray-600 hover:bg-gray-100 transition flex items-center justify-between";
+            }
+
+            state.folders.forEach(folder => {
+                const count = state.jobs.filter(j => j.folderId === folder.id).length;
+                const isActive = state.currentFolderId === folder.id && !state.viewingJob;
+                
+                const classes = isActive 
+                    ? "w-full text-left px-3 py-2 rounded-md font-medium bg-blue-50 text-primary transition flex items-center justify-between group" 
+                    : "w-full text-left px-3 py-2 rounded-md font-medium text-gray-600 hover:bg-gray-100 transition flex items-center justify-between group";
+
+                const btn = document.createElement('button');
+                btn.className = classes;
+                btn.innerHTML = `
+                    <span class="flex items-center gap-2 truncate"><i class="far fa-folder w-4 text-center"></i> ${escapeHTML(folder.name)}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs bg-gray-200 text-gray-700 py-0.5 px-2 rounded-full">${count}</span>
+                        <i class="fas fa-trash text-red-400 opacity-0 group-hover:opacity-100 hover:text-red-600 transition" onclick="event.stopPropagation(); app.confirmDelete('folder', '${folder.id}')"></i>
+                    </div>
+                `;
+                btn.onclick = () => app.setFolder(folder.id);
+                list.appendChild(btn);
+            });
+        }
+
+        function renderMainContent() {
+            const main = document.getElementById('main-content');
+            
+            if (state.viewingJob) {
+                renderJobDetail(main);
+            } else {
+                renderJobList(main);
+            }
+        }
+
+        function renderJobList(container) {
+            let filteredJobs = state.jobs;
+            let title = "Tutte le offerte";
+            
+            if (state.currentFolderId) {
+                filteredJobs = state.jobs.filter(j => j.folderId === state.currentFolderId);
+                const folder = state.folders.find(f => f.id === state.currentFolderId);
+                title = folder ? `Cartella: ${folder.name}` : title;
+            }
+
+            let html = `
+                <div class="mb-6 flex justify-between items-end">
+                    <div>
+                        <h2 class="text-2xl font-bold text-gray-800">${escapeHTML(title)}</h2>
+                        <p class="text-gray-500 text-sm mt-1">${filteredJobs.length} annunci archiviati</p>
+                    </div>
+                </div>
+            `;
+
+            if (filteredJobs.length === 0) {
+                html += `
+                    <div class="flex flex-col items-center justify-center h-64 bg-white rounded-xl border border-dashed border-gray-300">
+                        <div class="bg-gray-50 p-4 rounded-full mb-4"><i class="fas fa-inbox text-3xl text-gray-400"></i></div>
+                        <h3 class="text-lg font-medium text-gray-700">Nessuna offerta qui</h3>
+                        <p class="text-gray-500 mt-1 mb-4 text-sm text-center">Inizia ad archiviare i tuoi annunci di lavoro.</p>
+                        <button onclick="app.showAddJobModal()" class="text-primary font-medium hover:underline">Aggiungi ora</button>
+                    </div>
+                `;
+            } else {
+                html += `<div class="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-3 gap-4">`;
+                filteredJobs.forEach(job => {
+                    const folder = state.folders.find(f => f.id === job.folderId);
+                    const folderBadge = folder ? `<span class="text-xs bg-gray-100 text-gray-600 px-2 py-1 rounded border border-gray-200"><i class="far fa-folder mr-1"></i>${escapeHTML(folder.name)}</span>` : '';
+                    
+                    html += `
+                        <div class="bg-white p-5 rounded-xl border border-gray-200 shadow-sm hover:shadow-md transition flex flex-col h-full relative group cursor-pointer" onclick="app.viewJob('${job.id}')">
+                            <div class="flex justify-between items-start mb-2">
+                                <span class="text-xs font-semibold text-gray-500 bg-gray-50 px-2 py-1 rounded">${formatDate(job.date)}</span>
+                                <div class="opacity-0 group-hover:opacity-100 transition flex gap-2 absolute top-4 right-4 bg-white px-1 py-0.5 rounded shadow-sm border border-gray-100">
+                                    <button onclick="event.stopPropagation(); app.editJob('${job.id}')" class="text-gray-400 hover:text-primary p-1"><i class="fas fa-edit"></i></button>
+                                    <button onclick="event.stopPropagation(); app.confirmDelete('job', '${job.id}')" class="text-gray-400 hover:text-red-500 p-1"><i class="fas fa-trash"></i></button>
+                                </div>
+                            </div>
+                            <h3 class="text-lg font-bold text-gray-900 leading-tight mb-1 line-clamp-2">${escapeHTML(job.title)}</h3>
+                            <div class="text-md text-primary font-medium mb-3">${escapeHTML(job.company)}</div>
+                            
+                            <div class="text-sm text-gray-600 flex items-center gap-2 mb-4">
+                                <i class="fas fa-map-marker-alt text-gray-400"></i> ${escapeHTML(job.location || 'Non specificata')}
+                            </div>
+                            
+                            <div class="mt-auto pt-4 border-t border-gray-100 flex items-center justify-between">
+                                ${folderBadge}
+                                ${job.link ? `<a href="${job.link}" target="_blank" onclick="event.stopPropagation()" class="text-xs text-blue-600 hover:underline flex items-center gap-1">Vedi fonte <i class="fas fa-external-link-alt text-[10px]"></i></a>` : '<div></div>'}
+                            </div>
+                        </div>
+                    `;
+                });
+                html += `</div>`;
+            }
+            container.innerHTML = html;
+        }
+
+
+        function renderJobDetail(container) {
+            const job = state.viewingJob;
+            const folder = state.folders.find(f => f.id === job.folderId);
+            
+            container.innerHTML = `
+                <div class="max-w-4xl mx-auto">
+                    <button onclick="app.closeJobView()" class="mb-6 text-gray-500 hover:text-gray-800 flex items-center gap-2 transition font-medium">
+                        <i class="fas fa-arrow-left"></i> Torna alla lista
+                    </button>
+                    
+                    <div class="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden relative">
+                        <div class="p-6 md:p-8 border-b border-gray-100">
+                            <div class="flex flex-wrap justify-between items-start gap-4 mb-4">
+                                <div>
+                                    <h1 class="text-2xl md:text-3xl font-bold text-gray-900 mb-2">${escapeHTML(job.title)}</h1>
+                                    <div class="text-xl text-primary font-semibold">${escapeHTML(job.company)}</div>
+                                </div>
+                                <div class="flex gap-2">
+                                    <button onclick="app.editJob('${job.id}')" class="px-3 py-1.5 bg-gray-50 text-gray-600 border border-gray-200 rounded-lg hover:bg-gray-100 transition text-sm font-medium"><i class="fas fa-edit mr-1"></i> Modifica</button>
+                                    <button onclick="app.confirmDelete('job', '${job.id}', true)" class="px-3 py-1.5 bg-red-50 text-red-600 border border-red-100 rounded-lg hover:bg-red-100 transition text-sm font-medium"><i class="fas fa-trash mr-1"></i> Elimina</button>
+                                </div>
+                            </div>
+                            
+                            <div class="flex flex-wrap gap-4 text-sm text-gray-600 mt-6">
+                                <div class="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                    <i class="fas fa-calendar text-gray-400"></i> Salvato il: ${formatDate(job.date)}
+                                </div>
+                                <div class="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                    <i class="fas fa-map-marker-alt text-gray-400"></i> ${escapeHTML(job.location || 'N/D')}
+                                </div>
+                                ${folder ? `
+                                <div class="flex items-center gap-2 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-100">
+                                    <i class="far fa-folder text-gray-400"></i> ${escapeHTML(folder.name)}
+                                </div>` : ''}
+                                ${job.link ? `
+                                <a href="${job.link}" target="_blank" class="flex items-center gap-2 bg-blue-50 text-blue-700 px-3 py-1.5 rounded-lg border border-blue-100 hover:bg-blue-100 transition">
+                                    <i class="fas fa-link"></i> Vai all'annuncio
+                                </a>` : ''}
+                            </div>
+                        </div>
+                        
+                        <div class="p-6 md:p-8 flex flex-col md:flex-row gap-8">
+                            <div class="flex-1">
+                                <h3 class="text-sm font-bold text-gray-400 uppercase tracking-wider mb-4 flex items-center justify-between">
+                                    Descrizione Completa
+                                    <span class="text-xs font-normal lowercase bg-yellow-100 text-yellow-800 px-2 py-0.5 rounded flex items-center gap-1"><i class="fas fa-lightbulb"></i> Seleziona il testo per chiedere all'AI</span>
+                                </h3>
+                                <div class="text-gray-800 leading-relaxed whitespace-pre-wrap job-description-content text-[15px]" id="job-description-text">${escapeHTML(job.description || 'Nessuna descrizione inserita.')}</div>
+                            </div>
+                            
+                            ${job.notes ? `
+                            <div class="md:w-72 flex-shrink-0">
+                                <div class="bg-yellow-50 rounded-xl p-5 border border-yellow-100 h-full">
+                                    <h3 class="text-sm font-bold text-yellow-800 uppercase tracking-wider mb-3 flex items-center gap-2">
+                                        <i class="fas fa-sticky-note"></i> Le mie note
+                                    </h3>
+                                    <div class="text-yellow-900 text-sm whitespace-pre-wrap leading-relaxed">${escapeHTML(job.notes)}</div>
+                                </div>
+                            </div>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }
+
+        function populateFolderSelects() {
+            const select = document.getElementById('job-folder');
+            const currentVal = select.value;
+            select.innerHTML = '<option value="">Nessuna cartella</option>';
+            state.folders.forEach(f => {
+                select.innerHTML += `<option value="${f.id}">${escapeHTML(f.name)}</option>`;
+            });
+            if (currentVal) select.value = currentVal;
+        }
+
+
+        app.setFolder = (id) => {
+            state.currentFolderId = id;
+            state.viewingJob = null;
+            updateUI();
+        };
+
+        app.viewJob = (id) => {
+            state.viewingJob = state.jobs.find(j => j.id === id);
+            updateUI();
+        };
+
+        app.closeJobView = () => {
+            state.viewingJob = null;
+            updateUI();
+        };
+
+        app.showAddJobModal = () => {
+            document.getElementById('job-form').reset();
+            document.getElementById('job-id').value = '';
+            // Data di default oggi
+            document.getElementById('job-date').value = new Date().toISOString().split('T')[0];
+            if (state.currentFolderId) {
+                document.getElementById('job-folder').value = state.currentFolderId;
+            }
+            document.getElementById('job-modal-title').textContent = 'Aggiungi Offerta';
+            showModal('job-modal');
+        };
+
+        app.editJob = (id) => {
+            const job = state.jobs.find(j => j.id === id);
+            if (!job) return;
+            
+            document.getElementById('job-id').value = job.id;
+            document.getElementById('job-company').value = job.company || '';
+            document.getElementById('job-title').value = job.title || '';
+            document.getElementById('job-location').value = job.location || '';
+            document.getElementById('job-date').value = job.date || '';
+            document.getElementById('job-folder').value = job.folderId || '';
+            document.getElementById('job-link').value = job.link || '';
+            document.getElementById('job-description').value = job.description || '';
+            document.getElementById('job-notes').value = job.notes || '';
+            
+            document.getElementById('job-modal-title').textContent = 'Modifica Offerta';
+            showModal('job-modal');
+        };
+
+        app.showAddFolderModal = () => {
+            document.getElementById('folder-name').value = '';
+            showModal('folder-modal');
+        };
+
+        // NEW: Gestione Impostazioni
+        app.showSettingsModal = () => {
+            const savedKey = localStorage.getItem('grokApiKey') || '';
+            document.getElementById('grok-api-key').value = savedKey;
+            showModal('settings-modal');
+        };
+
+        app.saveSettings = () => {
+            const key = document.getElementById('grok-api-key').value.trim();
+            localStorage.setItem('grokApiKey', key);
+            showToast("Impostazioni salvate", "success");
+            app.closeModals();
+        };
+
+        let deleteContext = null;
+        app.confirmDelete = (type, id, fromDetail = false) => {
+            deleteContext = { type, id, fromDetail };
+            showModal('confirm-modal');
+        };
+
+        document.getElementById('confirm-delete-btn').onclick = async () => {
+            if (!deleteContext || !state.userId) return;
+            
+            try {
+                if (deleteContext.type === 'job') {
+                    await deleteDoc(getJobDoc(deleteContext.id));
+                    if (deleteContext.fromDetail) app.closeJobView();
+                    showToast("Offerta eliminata", "success");
+                } else if (deleteContext.type === 'folder') {
+                    await deleteDoc(getFolderDoc(deleteContext.id));
+                    // Opzionale: spostare i job della cartella in "nessuna cartella"
+                    const jobsInFolder = state.jobs.filter(j => j.folderId === deleteContext.id);
+                    for (let j of jobsInFolder) {
+                        await setDoc(getJobDoc(j.id), { ...j, folderId: null }, { merge: true });
+                    }
+                    if (state.currentFolderId === deleteContext.id) state.currentFolderId = null;
+                    showToast("Cartella eliminata", "success");
+                }
+            } catch (e) {
+                console.error(e);
+                showToast("Errore durante l'eliminazione", "error");
+            }
+            app.closeModals();
+        };
+
+
+        app.saveJob = async () => {
+            if (!state.userId) return;
+            
+            const form = document.getElementById('job-form');
+            if (!form.checkValidity()) {
+                form.reportValidity();
+                return;
+            }
+
+            const id = document.getElementById('job-id').value || crypto.randomUUID();
+            const jobData = {
+                company: document.getElementById('job-company').value.trim(),
+                title: document.getElementById('job-title').value.trim(),
+                location: document.getElementById('job-location').value.trim(),
+                date: document.getElementById('job-date').value,
+                folderId: document.getElementById('job-folder').value || null,
+                link: document.getElementById('job-link').value.trim(),
+                description: document.getElementById('job-description').value.trim(),
+                notes: document.getElementById('job-notes').value.trim(),
+                updatedAt: new Date().toISOString()
+            };
+
+            if (!document.getElementById('job-id').value) {
+                jobData.createdAt = new Date().toISOString();
+            }
+
+            try {
+                await setDoc(getJobDoc(id), jobData, { merge: true });
+                showToast("Offerta salvata con successo", "success");
+                app.closeModals();
+                
+                // Aggiorna vista se eravamo nel dettaglio
+                if (state.viewingJob && state.viewingJob.id === id) {
+                    state.viewingJob = { id, ...jobData };
+                    updateUI();
+                }
+            } catch (e) {
+                console.error(e);
+                showToast("Errore durante il salvataggio", "error");
+            }
+        };
+
+        app.saveFolder = async () => {
+            if (!state.userId) return;
+            const name = document.getElementById('folder-name').value.trim();
+            if (!name) return;
+
+            const id = crypto.randomUUID();
+            try {
+                await setDoc(getFolderDoc(id), {
+                    name: name,
+                    createdAt: new Date().toISOString()
+                });
+                showToast("Cartella creata", "success");
+                app.closeModals();
+            } catch (e) {
+                console.error(e);
+                showToast("Errore creazione cartella", "error");
+            }
+        };
+
+        // Modal Helpers
+        function showModal(id) {
+            const backdrop = document.getElementById('modal-backdrop');
+            const modal = document.getElementById(id);
+            
+            document.querySelectorAll('#modal-backdrop > div').forEach(m => m.classList.add('hidden'));
+            backdrop.classList.remove('hidden');
+            modal.classList.remove('hidden');
+            
+            modal.classList.add('modal-enter');
+            setTimeout(() => {
+                modal.classList.remove('modal-enter');
+                modal.classList.add('modal-enter-active');
+            }, 10);
+        }
+
+        app.closeModals = () => {
+            document.getElementById('modal-backdrop').classList.add('hidden');
+        };
+
+        // Helpers
+        function escapeHTML(str) {
+            if (!str) return '';
+            return str.replace(/[&<>'"]/g, 
+                tag => ({
+                    '&': '&amp;',
+                    '<': '&lt;',
+                    '>': '&gt;',
+                    "'": '&#39;',
+                    '"': '&quot;'
+                }[tag])
+            );
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return '';
+            const d = new Date(dateString);
+            return d.toLocaleDateString('it-IT', { day: '2-digit', month: 'short', year: 'numeric' });
+        }
+
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toast-container');
+            const toast = document.createElement('div');
+            
+            const colorClass = type === 'success' ? 'bg-green-600' : (type === 'error' ? 'bg-red-600' : 'bg-gray-800');
+            
+            toast.className = `${colorClass} text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3 transition-all duration-300 transform translate-y-10 opacity-0 pointer-events-auto`;
+            toast.innerHTML = `
+                <i class="fas ${type === 'success' ? 'fa-check-circle' : (type === 'error' ? 'fa-exclamation-circle' : 'fa-info-circle')}"></i>
+                <span class="text-sm font-medium">${message}</span>
+            `;
+            
+            container.appendChild(toast);
+            
+            // In animate
+            requestAnimationFrame(() => {
+                toast.classList.remove('translate-y-10', 'opacity-0');
+            });
+            
+            // Out animate and remove
+            setTimeout(() => {
+                toast.classList.add('opacity-0', 'translate-y-2');
+                setTimeout(() => toast.remove(), 300);
+            }, 3000);
+        }
+
+
+        const aiTooltip = document.getElementById('ai-tooltip');
+        let currentSelectionText = "";
+
+        // Gestione della selezione testo per tooltip AI
+        document.addEventListener('mouseup', (e) => {
+            if (!state.viewingJob) return;
+            
+            // Ignora click nel tooltip o sidebar
+            if (e.target.closest('#ai-tooltip') || e.target.closest('#ai-sidebar')) return;
+
+            const selection = window.getSelection();
+            const text = selection.toString().trim();
+
+            // Verifica che il testo selezionato provenga dal container della descrizione
+            const container = document.getElementById('job-description-text');
+            if (!container) return;
+
+            if (text.length > 0 && selection.containsNode(container, true)) {
+                currentSelectionText = text;
+                const range = selection.getRangeAt(0);
+                const rect = range.getBoundingClientRect();
+                
+                // Posiziona il tooltip sopra la selezione
+                aiTooltip.style.left = `${rect.left + (rect.width / 2)}px`;
+                aiTooltip.style.top = `${rect.top - 45}px`;
+                aiTooltip.classList.remove('hidden');
+            } else {
+                aiTooltip.classList.add('hidden');
+                currentSelectionText = "";
+            }
+        });
+
+        // Nascondi tooltip allo scroll
+        document.getElementById('main-content').addEventListener('scroll', () => {
+            aiTooltip.classList.add('hidden');
+        });
+
+        // AI Sidebar Logic
+        app.toggleAiSidebar = (forceShow = false) => {
+            const sidebar = document.getElementById('ai-sidebar');
+            if (forceShow || sidebar.classList.contains('translate-x-full')) {
+                sidebar.classList.remove('translate-x-full');
+            } else {
+                sidebar.classList.add('translate-x-full');
+            }
+        };
+
+        app.triggerAIFromSelection = () => {
+            aiTooltip.classList.add('hidden');
+            if (!currentSelectionText) return;
+            
+            app.toggleAiSidebar(true);
+            const prompt = `Puoi spiegarmi meglio questo termine/passaggio trovato nell'offerta di lavoro?\n\n"${currentSelectionText}"`;
+            
+            askAI(prompt);
+        };
+
+        app.submitAIOther = (e) => {
+            e.preventDefault();
+            const input = document.getElementById('ai-input');
+            const val = input.value.trim();
+            if (!val) return;
+            
+            input.value = '';
+            askAI(val);
+        };
+
+        async function askAI(userPrompt) {
+            const historyContainer = document.getElementById('ai-chat-history');
+            
+            // Rimuovi eventuale testo di placeholder
+            if (state.aiHistory.length === 0) {
+                historyContainer.innerHTML = '';
+            }
+
+            // Aggiungi messaggio utente alla UI e allo stato
+            state.aiHistory.push({ role: 'user', text: userPrompt });
+            appendChatMessage('user', userPrompt);
+
+            // Mostra loader AI
+            const loaderId = 'ai-loader-' + Date.now();
+            const loaderHtml = `
+                <div id="${loaderId}" class="flex gap-3 text-sm animate-pulse">
+                    <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-primary flex-shrink-0">
+                        <i class="fas fa-robot"></i>
+                    </div>
+                    <div class="bg-gray-100 rounded-2xl rounded-tl-none p-3 text-gray-500">
+                        L'assistente sta analizzando...
+                    </div>
+                </div>
+            `;
+            historyContainer.insertAdjacentHTML('beforeend', loaderHtml);
+            historyContainer.scrollTop = historyContainer.scrollHeight;
+
+            // Recupera la chiave API salvata
+            const grokApiKey = localStorage.getItem('grokApiKey');
+            
+            if (!grokApiKey) {
+                document.getElementById(loaderId).remove();
+                appendChatMessage('ai', "❌ Manca la chiave API di Grok. Inseriscila nelle Impostazioni nel menu laterale.");
+                return;
+            }
+
+            // Chiamata all'API di Grok (xAI)
+            const apiUrl = 'https://api.x.ai/v1/chat/completions';
+            
+            const payload = {
+                model: "grok-beta", // Usa il modello standard disponibile
+                messages: [
+                    { 
+                        role: "system", 
+                        content: "Sei un esperto consulente di carriera e reclutatore. L'utente sta analizzando offerte di lavoro IT/Tech o generaliste. Spiega terminologie, acronimi, tool (es. SaaS, B2B, Kubernetes, ERP) in modo conciso, rassicurante e in Italiano." 
+                    },
+                    { 
+                        role: "user", 
+                        content: userPrompt 
+                    }
+                ]
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${grokApiKey}`
+                    },
+                    body: JSON.stringify(payload)
+                });
+                
+                const result = await response.json();
+                document.getElementById(loaderId).remove();
+
+                if (result.choices && result.choices[0].message) {
+                    const aiResponseText = result.choices[0].message.content;
+                    state.aiHistory.push({ role: 'ai', text: aiResponseText });
+                    appendChatMessage('ai', aiResponseText);
+                } else {
+                    console.error("Grok Response:", result);
+                    throw new Error(result.error?.message || "Risposta API non valida");
+                }
+            } catch (e) {
+                console.error("AI Error:", e);
+                document.getElementById(loaderId)?.remove();
+                appendChatMessage('ai', `❌ Errore API: ${e.message}. Verifica la tua API Key.`);
+            }
+        }
+
+        function appendChatMessage(role, text) {
+            const container = document.getElementById('ai-chat-history');
+            
+            // Format bold text for markdown-like syntax
+            const formattedText = escapeHTML(text).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+            
+            let html = '';
+            if (role === 'user') {
+                html = `
+                    <div class="flex gap-3 text-sm justify-end">
+                        <div class="bg-primary text-white rounded-2xl rounded-tr-none p-3 max-w-[85%] leading-relaxed">
+                            ${formattedText}
+                        </div>
+                    </div>
+                `;
+            } else {
+                html = `
+                    <div class="flex gap-3 text-sm">
+                        <div class="w-8 h-8 rounded-full bg-blue-100 flex items-center justify-center text-primary flex-shrink-0 mt-1">
+                            <i class="fas fa-robot"></i>
+                        </div>
+                        <div class="bg-gray-100 text-gray-800 rounded-2xl rounded-tl-none p-3 max-w-[85%] leading-relaxed">
+                            ${formattedText}
+                        </div>
+                    </div>
+                `;
+            }
+            container.insertAdjacentHTML('beforeend', html);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        window.addEventListener('DOMContentLoaded', initAuth);
+
+    </script>
+</body>
+</html>
