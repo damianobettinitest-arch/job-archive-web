@@ -293,8 +293,6 @@ const firebaseConfig = {
   messagingSenderId: "1068648505648",
   appId: "1:1068648505648:web:4779be9db9185949bb28f5"
 };
-
-// Initialize Firebase
 const app = initializeApp(firebaseConfig);
         };
         
@@ -969,7 +967,12 @@ const app = initializeApp(firebaseConfig);
             container.scrollTop = container.scrollHeight;
         }
 
-        window.addEventListener('DOMContentLoaded', initAuth);
+        // FIX: Assicura che l'app parta sempre, togliendo il blocco sul loader
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', initAuth);
+        } else {
+            initAuth();
+        }
 
     </script>
 </body>
