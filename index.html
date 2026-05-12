@@ -962,28 +962,19 @@
             
             if (!grokApiKey) {
                 document.getElementById(loaderId).remove();
-                appendChatMessage('ai', "❌ Manca la chiave API. Inseriscila nelle Impostazioni nel menu laterale.");
+                appendChatMessage('ai', "❌ Manca la chiave API di Grok. Inseriscila nelle Impostazioni nel menu laterale.");
                 return;
             }
 
-            // --- NUOVO FLUSSO PER API HUGGINGFACE INFERENCE (GRATUITO) ---
-            // Usiamo l'API di inferenza gratuita di Hugging Face come alternativa stabile.
-            // Richiede un account Hugging Face (gratuito) e un Token di accesso.
-            const apiUrl = 'https://api-inference.huggingface.co/models/mistralai/Mixtral-8x7B-Instruct-v0.1';
+            // Chiamata all'API di Grok (xAI) aggiornata secondo il tuo curl
+            const apiUrl = 'https://api.x.ai/v1/responses';
             
-            // Creiamo un prompt formattato per i modelli Instruct
-            const fullPrompt = `<s>[INST] Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano. 
-            Rispondi SOLO alla domanda, non aggiungere testo extra.
-            
-            Domanda: ${userPrompt} [/INST]`;
+            // Uniamo il prompt di sistema (per avere risposte da consulente in italiano) all'input utente
+            const fullPrompt = "Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano.\n\nDomanda utente: " + userPrompt;
 
             const payload = {
-                inputs: fullPrompt,
-                parameters: {
-                    max_new_tokens: 500,
-                    return_full_text: false,
-                    temperature: 0.3
-                }
+                model: "grok-4.20-reasoning", 
+                input: fullPrompt
             };
 
             try {
@@ -999,25 +990,20 @@
                 const result = await response.json();
                 document.getElementById(loaderId).remove();
 
+                // Estrazione flessibile del testo di risposta in base alla struttura del nuovo endpoint
                 let aiResponseText = "";
-
-                // Verifica che la risposta sia valida e gestisci gli errori comuni di Hugging Face
-                if (response.ok) {
-                    if (Array.isArray(result) && result.length > 0 && result[0].generated_text) {
-                        aiResponseText = result[0].generated_text.trim();
-                    } else {
-                        aiResponseText = "Risposta vuota o formato inatteso dal modello.";
-                        console.error("HF Unexpected response:", result);
-                    }
+                
+                if (result.output) {
+                    aiResponseText = result.output;
+                } else if (result.text) {
+                    aiResponseText = result.text;
+                } else if (result.response) {
+                    aiResponseText = result.response;
+                } else if (result.choices && result.choices[0].message) {
+                    aiResponseText = result.choices[0].message.content; // Fallback vecchio formato
                 } else {
-                    // Gestione errori API (es. Token invalido, modello in caricamento)
-                    if (result.error && result.error.includes("is currently loading")) {
-                         aiResponseText = "⏳ Il modello si sta risvegliando. Attendi qualche secondo e riprova.";
-                    } else if (response.status === 401) {
-                         aiResponseText = "❌ Chiave API rifiutata. Controlla di aver inserito un Access Token valido (es. hf_...).";
-                    } else {
-                         aiResponseText = `Errore API: ${result.error || response.statusText}`;
-                    }
+                    // Se non trova le chiavi sopra, stampa l'intero JSON per farci capire com'è fatto
+                    aiResponseText = "Struttura risposta non standard: " + JSON.stringify(result);
                 }
 
                 // Aggiunge la risposta in chat
@@ -1027,7 +1013,7 @@
             } catch (e) {
                 console.error("AI Error:", e);
                 document.getElementById(loaderId)?.remove();
-                appendChatMessage('ai', `❌ Errore di connessione: ${e.message}.`);
+                appendChatMessage('ai', `❌ Errore di connessione: ${e.message}. Verifica la chiave API o controlla la console (F12) per i dettagli.`);
             }
         }
 
