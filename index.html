@@ -274,35 +274,57 @@
     <!-- Toast Notification -->
     <div id="toast-container" class="fixed bottom-4 left-1/2 transform -translate-x-1/2 z-50 flex flex-col gap-2 pointer-events-none"></div>
 
+    <script>
+        // Failsafe per nascondere il loader nel caso estremo in cui ci siano errori di sintassi javascript (es. virgole mancanti)
+        window.addEventListener('load', () => {
+            setTimeout(() => {
+                const loader = document.getElementById('app-loader');
+                if(loader && loader.style.display !== 'none') {
+                    loader.style.display = 'none';
+                    const container = document.getElementById('toast-container');
+                    if (container) {
+                        container.innerHTML = `<div class="bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3"><i class="fas fa-exclamation-triangle"></i><span class="text-sm font-medium">Errore critico JavaScript: Controlla di non aver cancellato virgole o virgolette nella configurazione!</span></div>`;
+                    }
+                }
+            }, 2000);
+        });
+    </script>
+
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
         import { getAuth, signInAnonymously, signInWithCustomToken } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
         import { getFirestore, collection, onSnapshot, doc, setDoc, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
 
         // ==========================================
-        // ⚠️ INCOLLA QUI IL TUO FIREBASE CONFIG ⚠️
-        // Sostituisci l'oggetto vuoto con quello che ti fornisce Firebase Console
+        // ⚠️ FIREBASE CONFIG CORRETTO ⚠️
         // ==========================================
         const myFirebaseConfig = {
-  apiKey: "AIzaSyCt2u9MVB7C7B9APcr_8D5YTkwUNh4Q-BQ",
-  authDomain: "job-archive-tool.firebaseapp.com",
-  projectId: "job-archive-tool",
-  storageBucket: "job-archive-tool.firebasestorage.app",
-  messagingSenderId: "1068648505648",
-  appId: "1:1068648505648:web:4779be9db9185949bb28f5"
-};
+            apiKey: "AIzaSyCt2u9MVB7C7B9APcr_8D5YTkwUNh4Q-BQ",
+            authDomain: "job-archive-tool.firebaseapp.com",
+            projectId: "job-archive-tool",
+            storageBucket: "job-archive-tool.firebasestorage.app",
+            messagingSenderId: "1068648505648",
+            appId: "1:1068648505648:web:4779be9db9185949bb28f5"
+        };
         
         const appId = 'job-archive-app'; 
         // Usa il config locale se definito, altrimenti tenta fallback per retrocompatibilità
         const firebaseConfig = Object.keys(myFirebaseConfig).length > 0 ? myFirebaseConfig : (typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : { projectId: "dummy-project" });
         
         let appFirebase, db, auth;
+        let useLocalStorage = false;
+        
         try {
-            appFirebase = initializeApp(firebaseConfig);
-            db = getFirestore(appFirebase);
-            auth = getAuth(appFirebase);
+            if (Object.keys(myFirebaseConfig).length > 0) {
+                appFirebase = initializeApp(firebaseConfig);
+                db = getFirestore(appFirebase);
+                auth = getAuth(appFirebase);
+            } else {
+                useLocalStorage = true;
+            }
         } catch (e) {
             console.error("Firebase init error", e);
+            useLocalStorage = true;
         }
 
         // Stato dell'applicazione
@@ -321,6 +343,8 @@
         // Inizializzazione Auth
         async function initAuth() {
             try {
+                if (useLocalStorage) throw new Error("Firebase non configurato, attivazione storage locale.");
+                
                 // Modificato per l'uso standard fuori da questo ambiente
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     const userCredential = await signInWithCustomToken(auth, __initial_auth_token);
@@ -332,10 +356,38 @@
                 document.getElementById('app-loader').style.display = 'none';
                 startRealtimeListeners();
             } catch (error) {
-                console.error("Auth Error:", error);
+                console.error("Avvio Firebase Fallito:", error.message);
+                useLocalStorage = true;
+                state.userId = 'local-user';
                 document.getElementById('app-loader').style.display = 'none';
-                showToast("Errore db: Inserisci il Firebase Config!", "error");
+                
+                showToast("Avviato in modalità locale. I dati restano nel browser.", "info");
+                loadFromLocalStorage();
             }
+        }
+
+        function loadFromLocalStorage() {
+            const localData = JSON.parse(localStorage.getItem('jobArchiveData')) || { folders: [], jobs: [] };
+            state.folders = localData.folders || [];
+            state.jobs = localData.jobs || [];
+            state.folders.sort((a, b) => a.name.localeCompare(b.name));
+            state.jobs.sort((a, b) => new Date(b.date) - new Date(a.date));
+            updateUI();
+            
+            // Modifica icona nel footer per indicare il salvataggio locale
+            const statusIcon = document.querySelector('.fa-cloud-check');
+            if (statusIcon) {
+                statusIcon.className = 'fas fa-hdd text-gray-400';
+                statusIcon.previousElementSibling.textContent = 'Salvato in Locale';
+            }
+        }
+
+        function saveToLocalStorage() {
+            localStorage.setItem('jobArchiveData', JSON.stringify({
+                folders: state.folders,
+                jobs: state.jobs
+            }));
+            updateUI();
         }
 
         // Funzioni helper per i path di Firestore (Regola 1)
@@ -635,15 +687,26 @@
             
             try {
                 if (deleteContext.type === 'job') {
-                    await deleteDoc(getJobDoc(deleteContext.id));
+                    if (useLocalStorage) {
+                        state.jobs = state.jobs.filter(j => j.id !== deleteContext.id);
+                        saveToLocalStorage();
+                    } else {
+                        await deleteDoc(getJobDoc(deleteContext.id));
+                    }
                     if (deleteContext.fromDetail) app.closeJobView();
                     showToast("Offerta eliminata", "success");
                 } else if (deleteContext.type === 'folder') {
-                    await deleteDoc(getFolderDoc(deleteContext.id));
-                    // Opzionale: spostare i job della cartella in "nessuna cartella"
-                    const jobsInFolder = state.jobs.filter(j => j.folderId === deleteContext.id);
-                    for (let j of jobsInFolder) {
-                        await setDoc(getJobDoc(j.id), { ...j, folderId: null }, { merge: true });
+                    if (useLocalStorage) {
+                        state.folders = state.folders.filter(f => f.id !== deleteContext.id);
+                        state.jobs.forEach(j => { if (j.folderId === deleteContext.id) j.folderId = null; });
+                        saveToLocalStorage();
+                    } else {
+                        await deleteDoc(getFolderDoc(deleteContext.id));
+                        // Opzionale: spostare i job della cartella in "nessuna cartella"
+                        const jobsInFolder = state.jobs.filter(j => j.folderId === deleteContext.id);
+                        for (let j of jobsInFolder) {
+                            await setDoc(getJobDoc(j.id), { ...j, folderId: null }, { merge: true });
+                        }
                     }
                     if (state.currentFolderId === deleteContext.id) state.currentFolderId = null;
                     showToast("Cartella eliminata", "success");
@@ -683,7 +746,18 @@
             }
 
             try {
-                await setDoc(getJobDoc(id), jobData, { merge: true });
+                if (useLocalStorage) {
+                    const existingIdx = state.jobs.findIndex(j => j.id === id);
+                    if (existingIdx >= 0) {
+                        state.jobs[existingIdx] = { ...state.jobs[existingIdx], ...jobData };
+                    } else {
+                        state.jobs.push({ id, ...jobData });
+                    }
+                    saveToLocalStorage();
+                } else {
+                    await setDoc(getJobDoc(id), jobData, { merge: true });
+                }
+                
                 showToast("Offerta salvata con successo", "success");
                 app.closeModals();
                 
@@ -705,10 +779,15 @@
 
             const id = crypto.randomUUID();
             try {
-                await setDoc(getFolderDoc(id), {
-                    name: name,
-                    createdAt: new Date().toISOString()
-                });
+                if (useLocalStorage) {
+                    state.folders.push({ id, name, createdAt: new Date().toISOString() });
+                    saveToLocalStorage();
+                } else {
+                    await setDoc(getFolderDoc(id), {
+                        name: name,
+                        createdAt: new Date().toISOString()
+                    });
+                }
                 showToast("Cartella creata", "success");
                 app.closeModals();
             } catch (e) {
