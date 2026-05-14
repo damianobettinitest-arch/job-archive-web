@@ -248,10 +248,10 @@
             </div>
         </div>
 
-        <!-- Settings Modal (Aggiornato per HF) -->
+        <!-- Settings Modal -->
         <div id="settings-modal" class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col hidden overflow-hidden">
             <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                <h3 class="font-bold text-lg"><i class="fas fa-cog text-gray-500 mr-2"></i> Impostazioni</h3>
+                <h3 class="font-bold text-lg"><i class="fas fa-cog text-gray-500 mr-2"></i> Impostazioni API</h3>
                 <button onclick="app.closeModals()" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times"></i></button>
             </div>
             <div class="p-4 space-y-4">
@@ -646,7 +646,6 @@
             showModal('folder-modal');
         };
 
-        // Gestione Impostazioni (Aggiornata per HF)
         app.showSettingsModal = () => {
             const savedKey = localStorage.getItem('hfApiKey') || '';
             document.getElementById('hf-api-key').value = savedKey;
@@ -901,7 +900,7 @@
             askAI(val);
         };
 
-        // --- HUGGING FACE API LOGIC ---
+        // --- HUGGING FACE API LOGIC CON FALLBACK ---
         async function askAI(userPrompt) {
             const historyContainer = document.getElementById('ai-chat-history');
             
@@ -919,7 +918,7 @@
                         <i class="fas fa-robot"></i>
                     </div>
                     <div class="bg-gray-100 rounded-2xl rounded-tl-none p-3 text-gray-500">
-                        L'assistente sta analizzando...
+                        L'assistente sta analizzando (ricerca modello disponibile in corso)...
                     </div>
                 </div>
             `;
@@ -934,11 +933,17 @@
                 return;
             }
 
-            // Utilizziamo un modello ottimizzato per istruzioni e chat su Hugging Face
-            const model = "mistralai/Mistral-7B-Instruct-v0.3"; 
-            const apiUrl = `https://api-inference.huggingface.co/models/${model}`;
-            
-            // Formattazione specifica per modelli Instruct (es. Mistral/Llama)
+            // --- ARRAY DEI MODELLI DA TENTARE ---
+            // Selezionati tra quelli gratuiti con maggiore affidabilità e compatibilità CORS.
+            // Se uno non funziona (è spento o ha blocchi CORS), passa al successivo.
+            const modelsToTry = [
+                "mistralai/Mistral-7B-Instruct-v0.3",
+                "HuggingFaceH4/zephyr-7b-beta",
+                "Qwen/Qwen2.5-7B-Instruct",
+                "microsoft/Phi-3-mini-4k-instruct",
+                "google/gemma-7b-it"
+            ];
+
             const systemPrompt = "Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano.";
             const fullPrompt = `<s>[INST] ${systemPrompt}\n\nDomanda utente: ${userPrompt} [/INST]`;
 
@@ -947,42 +952,75 @@
                 parameters: {
                     max_new_tokens: 500,
                     temperature: 0.7,
-                    return_full_text: false // Importante per non farsi restituire anche il prompt inviato
+                    return_full_text: false 
                 }
             };
 
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${hfApiKey}`
-                    },
-                    body: JSON.stringify(payload)
-                });
-                
-                const result = await response.json();
-                document.getElementById(loaderId).remove();
+            let aiResponseText = "";
+            let success = false;
+            let lastError = "";
 
-                let aiResponseText = "";
+            // --- LOGICA DI FALLBACK ---
+            for (const model of modelsToTry) {
+                const apiUrl = `https://api-inference.huggingface.co/models/${model}`;
+                console.log(`[AI] Tentativo con il modello: ${model}`);
                 
-                // Gestione flessibile della risposta tipica di Hugging Face Serverless Inference
-                if (Array.isArray(result) && result[0].generated_text) {
-                    aiResponseText = result[0].generated_text;
-                } else if (result.error) {
-                    aiResponseText = `Errore API HF: ${result.error}`;
-                } else {
-                    // Fallback se la struttura è inaspettata
-                    aiResponseText = "Struttura risposta non standard: " + JSON.stringify(result);
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${hfApiKey}`
+                        },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    const result = await response.json();
+                    
+                    if (response.ok) {
+                        // Verifica che la struttura della risposta sia quella attesa
+                        if (Array.isArray(result) && result[0].generated_text) {
+                            aiResponseText = result[0].generated_text;
+                            success = true;
+                            console.log(`[AI] ✅ Modello ${model} ha risposto correttamente.`);
+                            break; // Se ha successo, esce dal ciclo e ferma i tentativi
+                        } else if (result.error && result.error.includes("is currently loading")) {
+                            // Se il modello è in fase di caricamento sui server HF
+                            console.warn(`[AI] ⏳ Modello ${model} in caricamento. Provo il prossimo...`);
+                            lastError = "Modello in fase di risveglio sui server.";
+                            continue;
+                        } else if (result.error) {
+                            console.warn(`[AI] ⚠️ Errore generico dal modello ${model}:`, result.error);
+                            lastError = result.error;
+                            continue;
+                        } else {
+                            // Fallback per risposte in formato insolito ma valide
+                            aiResponseText = typeof result === 'string' ? result : JSON.stringify(result);
+                            success = true;
+                            break;
+                        }
+                    } else {
+                        console.warn(`[AI] ❌ Fallito ${model} con status HTTP:`, response.status);
+                        lastError = result.error || `Errore HTTP ${response.status}`;
+                        // In caso di errore HTTP (es. 401 Unauthorized o 503) prova il prossimo
+                    }
+                    
+                } catch (e) {
+                    // Gestisce gli errori di rete, i blocchi CORS (Failed to fetch), ecc.
+                    console.warn(`[AI] 🌐 Errore di connessione (CORS o Rete) con ${model}:`, e.message);
+                    lastError = `Failed to fetch / Errore di Rete (${e.message})`;
+                    // Continua col prossimo modello nel ciclo
                 }
+            }
 
+            document.getElementById(loaderId)?.remove();
+
+            if (success) {
                 state.aiHistory.push({ role: 'ai', text: aiResponseText.trim() });
                 appendChatMessage('ai', aiResponseText.trim());
-                
-            } catch (e) {
-                console.error("AI Error:", e);
-                document.getElementById(loaderId)?.remove();
-                appendChatMessage('ai', `❌ Errore di connessione: ${e.message}. Verifica il Token API o la disponibilità del modello.`);
+            } else {
+                // Se tutti i modelli hanno fallito, mostra l'ultimo errore
+                appendChatMessage('ai', `❌ <strong>Tutti i tentativi sono falliti.</strong><br><br>Ultimo errore: <em>${lastError}</em>.<br><br><small><strong>Suggerimento:</strong> Assicurati che il token Hugging Face sia corretto e abbia permessi di "Read". Se l'errore persiste, puoi modificare l'array <code>modelsToTry</code> nel codice per aggiungere altri modelli disponibili sul tuo account.</small>`);
             }
         }
 
