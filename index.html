@@ -74,7 +74,7 @@
 
                 <!-- Settings Button -->
                 <button onclick="app.showSettingsModal()" class="w-full bg-gray-100 hover:bg-gray-200 text-gray-700 font-medium py-2 px-4 rounded-lg shadow-sm transition mb-6 flex items-center justify-center gap-2">
-                    <i class="fas fa-cog"></i> Impostazioni API
+                    <i class="fas fa-cog"></i> Impostazioni AI
                 </button>
 
                 <div class="space-y-1">
@@ -248,19 +248,19 @@
             </div>
         </div>
 
-        <!-- Settings Modal -->
+        <!-- Settings Modal (Aggiornato per Gemini) -->
         <div id="settings-modal" class="bg-white rounded-xl shadow-2xl w-full max-w-md flex flex-col hidden overflow-hidden">
             <div class="p-4 border-b border-gray-200 flex justify-between items-center bg-gray-50">
-                <h3 class="font-bold text-lg"><i class="fas fa-cog text-gray-500 mr-2"></i> Impostazioni API</h3>
+                <h3 class="font-bold text-lg"><i class="fas fa-cog text-gray-500 mr-2"></i> Impostazioni AI</h3>
                 <button onclick="app.closeModals()" class="text-gray-500 hover:text-gray-800"><i class="fas fa-times"></i></button>
             </div>
             <div class="p-4 space-y-4">
                 <div class="bg-blue-50 text-blue-800 p-3 rounded-lg text-sm mb-4">
-                    <i class="fas fa-info-circle"></i> La chiave API viene salvata solo nella memoria locale del tuo browser per motivi di sicurezza.
+                    <i class="fas fa-info-circle"></i> La chiave API viene salvata solo nella memoria locale del tuo browser. Ottieni una chiave gratuita su <a href="https://aistudio.google.com/" target="_blank" class="underline font-bold">Google AI Studio</a>.
                 </div>
                 <div>
-                    <label class="block text-sm font-medium text-gray-700 mb-1">Hugging Face Token</label>
-                    <input type="password" id="hf-api-key" placeholder="hf_..." class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
+                    <label class="block text-sm font-medium text-gray-700 mb-1">Gemini API Key</label>
+                    <input type="password" id="gemini-api-key" placeholder="AIzaSy..." class="w-full border border-gray-300 rounded-lg px-3 py-2 focus:ring-2 focus:ring-primary focus:border-primary outline-none">
                 </div>
             </div>
             <div class="p-4 border-t border-gray-200 bg-gray-50 flex justify-end gap-2">
@@ -283,7 +283,7 @@
                     loader.style.display = 'none';
                     const container = document.getElementById('toast-container');
                     if (container) {
-                        container.innerHTML = `<div class="bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3"><i class="fas fa-exclamation-triangle"></i><span class="text-sm font-medium">Errore critico JavaScript: Controlla di non aver cancellato virgole o virgolette nella configurazione!</span></div>`;
+                        container.innerHTML = `<div class="bg-red-600 text-white px-4 py-3 rounded-lg shadow-lg flex items-center gap-3"><i class="fas fa-exclamation-triangle"></i><span class="text-sm font-medium">Errore critico JavaScript: Controlla la console!</span></div>`;
                     }
                 }
             }, 2000);
@@ -337,7 +337,7 @@
 
         async function initAuth() {
             try {
-                if (useLocalStorage) throw new Error("Firebase non configurato, attivazione storage locale.");
+                if (useLocalStorage) throw new Error("Firebase non configurato.");
                 
                 if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
                     const userCredential = await signInWithCustomToken(auth, __initial_auth_token);
@@ -354,7 +354,7 @@
                 state.userId = 'local-user';
                 document.getElementById('app-loader').style.display = 'none';
                 
-                showToast("Avviato in modalità locale. I dati restano nel browser.", "info");
+                showToast("Avviato in modalità locale.", "info");
                 loadFromLocalStorage();
             }
         }
@@ -405,7 +405,6 @@
             }, (error) => console.error("Error fetching jobs:", error));
         }
 
-        
         function updateUI() {
             renderSidebar();
             renderMainContent();
@@ -519,7 +518,6 @@
             container.innerHTML = html;
         }
 
-
         function renderJobDetail(container) {
             const job = state.viewingJob;
             const folder = state.folders.find(f => f.id === job.folderId);
@@ -595,7 +593,6 @@
             if (currentVal) select.value = currentVal;
         }
 
-
         app.setFolder = (id) => {
             state.currentFolderId = id;
             state.viewingJob = null;
@@ -646,16 +643,17 @@
             showModal('folder-modal');
         };
 
+        // Aggiornato per Gemini
         app.showSettingsModal = () => {
-            const savedKey = localStorage.getItem('hfApiKey') || '';
-            document.getElementById('hf-api-key').value = savedKey;
+            const savedKey = localStorage.getItem('geminiApiKey') || '';
+            document.getElementById('gemini-api-key').value = savedKey;
             showModal('settings-modal');
         };
 
         app.saveSettings = () => {
-            const key = document.getElementById('hf-api-key').value.trim();
-            localStorage.setItem('hfApiKey', key);
-            showToast("Impostazioni salvate", "success");
+            const key = document.getElementById('gemini-api-key').value.trim();
+            localStorage.setItem('geminiApiKey', key);
+            showToast("Chiave Gemini salvata!", "success");
             app.closeModals();
         };
 
@@ -885,7 +883,7 @@
             if (!currentSelectionText) return;
             
             app.toggleAiSidebar(true);
-            const prompt = `Puoi spiegarmi meglio questo termine/passaggio trovato nell'offerta di lavoro?\n\n"${currentSelectionText}"`;
+            const prompt = `Spiegami in modo semplice e conciso questo passaggio trovato in un'offerta di lavoro:\n\n"${currentSelectionText}"`;
             
             askAI(prompt);
         };
@@ -900,7 +898,7 @@
             askAI(val);
         };
 
-        // --- HUGGING FACE API LOGIC CON FALLBACK ---
+        // --- GEMINI API LOGIC ---
         async function askAI(userPrompt) {
             const historyContainer = document.getElementById('ai-chat-history');
             
@@ -918,115 +916,80 @@
                         <i class="fas fa-robot"></i>
                     </div>
                     <div class="bg-gray-100 rounded-2xl rounded-tl-none p-3 text-gray-500">
-                        L'assistente sta analizzando (ricerca modello disponibile in corso)...
+                        Gemini sta analizzando la richiesta...
                     </div>
                 </div>
             `;
             historyContainer.insertAdjacentHTML('beforeend', loaderHtml);
             historyContainer.scrollTop = historyContainer.scrollHeight;
 
-            const hfApiKey = localStorage.getItem('hfApiKey');
+            const geminiApiKey = localStorage.getItem('geminiApiKey');
             
-            if (!hfApiKey) {
+            if (!geminiApiKey) {
                 document.getElementById(loaderId).remove();
-                appendChatMessage('ai', "❌ Manca il token di Hugging Face. Inseriscilo nelle Impostazioni nel menu laterale.");
+                appendChatMessage('ai', "❌ Manca la chiave API di Gemini. Vai nel menu laterale > Impostazioni AI per inserirla.");
                 return;
             }
 
-            // --- ARRAY DEI MODELLI DA TENTARE ---
-            // Selezionati tra quelli gratuiti con maggiore affidabilità e compatibilità CORS.
-            // Se uno non funziona (è spento o ha blocchi CORS), passa al successivo.
-            const modelsToTry = [
-                "mistralai/Mistral-7B-Instruct-v0.3",
-                "HuggingFaceH4/zephyr-7b-beta",
-                "Qwen/Qwen2.5-7B-Instruct",
-                "microsoft/Phi-3-mini-4k-instruct",
-                "google/gemma-7b-it"
-            ];
+            // Endpoint REST ufficiale per Gemini 1.5 Flash (veloce, intelligente e con un tier gratuito ampio)
+            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
 
-            const systemPrompt = "Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano.";
-            const fullPrompt = `<s>[INST] ${systemPrompt}\n\nDomanda utente: ${userPrompt} [/INST]`;
-
+            // Costruiamo il payload formattato come richiesto da Gemini
             const payload = {
-                inputs: fullPrompt,
-                parameters: {
-                    max_new_tokens: 500,
+                systemInstruction: {
+                    parts: [
+                        { text: "Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano, aiutando i candidati a capire meglio gli annunci di lavoro." }
+                    ]
+                },
+                contents: [
+                    {
+                        role: "user",
+                        parts: [
+                            { text: userPrompt }
+                        ]
+                    }
+                ],
+                generationConfig: {
                     temperature: 0.7,
-                    return_full_text: false 
+                    maxOutputTokens: 500
                 }
             };
 
-            let aiResponseText = "";
-            let success = false;
-            let lastError = "";
-
-            // --- LOGICA DI FALLBACK ---
-            for (const model of modelsToTry) {
-                const apiUrl = `https://api-inference.huggingface.co/models/${model}`;
-                console.log(`[AI] Tentativo con il modello: ${model}`);
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(payload)
+                });
                 
-                try {
-                    const response = await fetch(apiUrl, {
-                        method: 'POST',
-                        headers: { 
-                            'Content-Type': 'application/json',
-                            'Authorization': `Bearer ${hfApiKey}`
-                        },
-                        body: JSON.stringify(payload)
-                    });
-                    
-                    const result = await response.json();
-                    
-                    if (response.ok) {
-                        // Verifica che la struttura della risposta sia quella attesa
-                        if (Array.isArray(result) && result[0].generated_text) {
-                            aiResponseText = result[0].generated_text;
-                            success = true;
-                            console.log(`[AI] ✅ Modello ${model} ha risposto correttamente.`);
-                            break; // Se ha successo, esce dal ciclo e ferma i tentativi
-                        } else if (result.error && result.error.includes("is currently loading")) {
-                            // Se il modello è in fase di caricamento sui server HF
-                            console.warn(`[AI] ⏳ Modello ${model} in caricamento. Provo il prossimo...`);
-                            lastError = "Modello in fase di risveglio sui server.";
-                            continue;
-                        } else if (result.error) {
-                            console.warn(`[AI] ⚠️ Errore generico dal modello ${model}:`, result.error);
-                            lastError = result.error;
-                            continue;
-                        } else {
-                            // Fallback per risposte in formato insolito ma valide
-                            aiResponseText = typeof result === 'string' ? result : JSON.stringify(result);
-                            success = true;
-                            break;
-                        }
-                    } else {
-                        console.warn(`[AI] ❌ Fallito ${model} con status HTTP:`, response.status);
-                        lastError = result.error || `Errore HTTP ${response.status}`;
-                        // In caso di errore HTTP (es. 401 Unauthorized o 503) prova il prossimo
-                    }
-                    
-                } catch (e) {
-                    // Gestisce gli errori di rete, i blocchi CORS (Failed to fetch), ecc.
-                    console.warn(`[AI] 🌐 Errore di connessione (CORS o Rete) con ${model}:`, e.message);
-                    lastError = `Failed to fetch / Errore di Rete (${e.message})`;
-                    // Continua col prossimo modello nel ciclo
+                const result = await response.json();
+                document.getElementById(loaderId).remove();
+
+                if (response.ok && result.candidates && result.candidates.length > 0) {
+                    // Gemini restituisce il testo dentro questo percorso specifico
+                    const aiResponseText = result.candidates[0].content.parts[0].text;
+                    state.aiHistory.push({ role: 'ai', text: aiResponseText.trim() });
+                    appendChatMessage('ai', aiResponseText.trim());
+                } else if (result.error) {
+                    console.error("Gemini API Error:", result.error);
+                    appendChatMessage('ai', `❌ Errore API Gemini: ${result.error.message || "Errore sconosciuto."}`);
+                } else {
+                    appendChatMessage('ai', "❌ Formato di risposta imprevisto dal server.");
                 }
-            }
-
-            document.getElementById(loaderId)?.remove();
-
-            if (success) {
-                state.aiHistory.push({ role: 'ai', text: aiResponseText.trim() });
-                appendChatMessage('ai', aiResponseText.trim());
-            } else {
-                // Se tutti i modelli hanno fallito, mostra l'ultimo errore
-                appendChatMessage('ai', `❌ <strong>Tutti i tentativi sono falliti.</strong><br><br>Ultimo errore: <em>${lastError}</em>.<br><br><small><strong>Suggerimento:</strong> Assicurati che il token Hugging Face sia corretto e abbia permessi di "Read". Se l'errore persiste, puoi modificare l'array <code>modelsToTry</code> nel codice per aggiungere altri modelli disponibili sul tuo account.</small>`);
+                
+            } catch (e) {
+                console.error("Connessione API Fallita:", e);
+                document.getElementById(loaderId)?.remove();
+                appendChatMessage('ai', `❌ Errore di connessione: ${e.message}. Verifica di aver inserito correttamente la tua API Key di Gemini nelle impostazioni.`);
             }
         }
 
         function appendChatMessage(role, text) {
             const container = document.getElementById('ai-chat-history');
             
+            // Format bold text for markdown-like syntax
             const formattedText = escapeHTML(text).replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
             
             let html = '';
