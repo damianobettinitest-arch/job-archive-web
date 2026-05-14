@@ -898,7 +898,7 @@
             askAI(val);
         };
 
-        // --- GEMINI API LOGIC ---
+        // --- GEMINI API LOGIC CON FALLBACK ---
         async function askAI(userPrompt) {
             const historyContainer = document.getElementById('ai-chat-history');
             
@@ -916,7 +916,7 @@
                         <i class="fas fa-robot"></i>
                     </div>
                     <div class="bg-gray-100 rounded-2xl rounded-tl-none p-3 text-gray-500">
-                        Gemini sta analizzando la richiesta...
+                        Ricerca del modello Gemini disponibile in corso...
                     </div>
                 </div>
             `;
@@ -931,22 +931,25 @@
                 return;
             }
 
-            // Endpoint REST ufficiale per Gemini 1.5 Flash (veloce, intelligente e con un tier gratuito ampio)
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${geminiApiKey}`;
+            // Array di modelli Gemini da tentare. Se uno fallisce, passa al successivo.
+            const modelsToTry = [
+                "gemini-1.5-flash-latest",
+                "gemini-1.5-flash",
+                "gemini-2.0-flash-exp",
+                "gemini-1.5-flash-8b",
+                "gemini-pro"
+            ];
 
-            // Costruiamo il payload formattato come richiesto da Gemini
+            // Abbiamo spostato il system prompt direttamente nel testo dell'utente 
+            // perché i vecchi modelli (come gemini-pro) non supportano il campo strutturale "systemInstruction".
+            const systemPrompt = "Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano.\n\nTesto da spiegare: ";
+            const fullPrompt = systemPrompt + `"${userPrompt}"`;
+
             const payload = {
-                systemInstruction: {
-                    parts: [
-                        { text: "Sei un esperto consulente di carriera e reclutatore IT. Spiega terminologie, tool o concetti in modo conciso e in Italiano, aiutando i candidati a capire meglio gli annunci di lavoro." }
-                    ]
-                },
                 contents: [
                     {
                         role: "user",
-                        parts: [
-                            { text: userPrompt }
-                        ]
+                        parts: [{ text: fullPrompt }]
                     }
                 ],
                 generationConfig: {
@@ -955,34 +958,52 @@
                 }
             };
 
-            try {
-                const response = await fetch(apiUrl, {
-                    method: 'POST',
-                    headers: { 
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(payload)
-                });
-                
-                const result = await response.json();
-                document.getElementById(loaderId).remove();
+            let aiResponseText = "";
+            let success = false;
+            let lastError = "";
 
-                if (response.ok && result.candidates && result.candidates.length > 0) {
-                    // Gemini restituisce il testo dentro questo percorso specifico
-                    const aiResponseText = result.candidates[0].content.parts[0].text;
-                    state.aiHistory.push({ role: 'ai', text: aiResponseText.trim() });
-                    appendChatMessage('ai', aiResponseText.trim());
-                } else if (result.error) {
-                    console.error("Gemini API Error:", result.error);
-                    appendChatMessage('ai', `❌ Errore API Gemini: ${result.error.message || "Errore sconosciuto."}`);
-                } else {
-                    appendChatMessage('ai', "❌ Formato di risposta imprevisto dal server.");
+            // --- LOGICA DI FALLBACK ---
+            for (const model of modelsToTry) {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${geminiApiKey}`;
+                console.log(`[AI] Tentativo con Gemini: ${model}`);
+
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+                    
+                    const result = await response.json();
+
+                    if (response.ok && result.candidates && result.candidates.length > 0) {
+                        aiResponseText = result.candidates[0].content.parts[0].text;
+                        success = true;
+                        console.log(`[AI] ✅ Modello ${model} ha risposto correttamente.`);
+                        break;
+                    } else if (result.error) {
+                        console.warn(`[AI] ⚠️ Errore dal modello ${model}:`, result.error.message);
+                        lastError = result.error.message;
+                        continue;
+                    } else {
+                        console.warn(`[AI] ⚠️ Formato imprevisto da ${model}`);
+                        lastError = "Formato di risposta imprevisto dal server.";
+                        continue;
+                    }
+                    
+                } catch (e) {
+                    console.warn(`[AI] 🌐 Errore di connessione con ${model}:`, e.message);
+                    lastError = e.message;
                 }
-                
-            } catch (e) {
-                console.error("Connessione API Fallita:", e);
-                document.getElementById(loaderId)?.remove();
-                appendChatMessage('ai', `❌ Errore di connessione: ${e.message}. Verifica di aver inserito correttamente la tua API Key di Gemini nelle impostazioni.`);
+            }
+
+            document.getElementById(loaderId)?.remove();
+
+            if (success) {
+                state.aiHistory.push({ role: 'ai', text: aiResponseText.trim() });
+                appendChatMessage('ai', aiResponseText.trim());
+            } else {
+                appendChatMessage('ai', `❌ <strong>Tutti i tentativi con Gemini sono falliti.</strong><br><br>Ultimo errore: <em>${lastError}</em>.<br><br><small>Verifica che la chiave API sia corretta e attiva su Google AI Studio.</small>`);
             }
         }
 
